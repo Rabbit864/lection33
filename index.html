@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+
+    <title>reveal.js</title>
+
+    <link rel="stylesheet" href="dist/reset.css" />
+    <link rel="stylesheet" href="dist/reveal.css" />
+    <link rel="stylesheet" href="dist/theme/black.css" />
+
+    <!-- Theme used for syntax highlighted code -->
+    <link rel="stylesheet" href="plugin/highlight/monokai.css" />
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>
+          <h3>Elasticsearch</h3>
+        </section>
+        <section>
+          <p>
+            Elasticsearch – это распределенный поисковый и аналитический движок.
+            Elasticsearch один из самых популярных поисковый движок и обычно
+            используется для таких примеров, как анализ журналов, полнотекстовый
+            поиск, интеллектуальные системы безопасности, бизнес-аналитика,
+            мониторинг текущих процессов, поиск с учетом морфологии языка или
+            поиск по geo координатам.
+          </p>
+        </section>
+        <section>
+          <p>
+            Elasticsearch использует json для хранения данных и rest api для
+            управлениями данными
+          </p>
+        </section>
+        <section>
+          <h4>Установка в docker</h4>
+          <pre><code data-line-numbers>docker run -p 9200:9200 -p 9300:9300 \
+            -e "discovery.type=single-node" -e "xpack.security.enabled=false" \
+            docker.elastic.co/elasticsearch/elasticsearch:8.11.2</code></pre>
+        </section>
+        <section>
+          <h4>Установка в docker-compose</h4>
+          <pre><code data-line-numbers="">version: '3'
+services:
+    elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.2
+        container_name: elasticsearch
+        restart: unless-stopped
+        ports:
+            - 9200:9200
+            - 9300:9300
+        environment:
+            - discovery.type=single-node
+            - xpack.security.enabled=false
+            - "ES_JAVA_OPTS=-Xms512m -Xmx512m"</code></pre>
+        </section>
+        <section>
+          <h4>Запрос к серверу</h4>
+          <pre><code data-line-numbers=""># для удобства запомним адрес в переменную
+#export ES_URL=$(docker-machine ip dev):9200
+export ES_URL=localhost:9200
+
+curl -X GET $ES_URL</code></pre>
+        </section>
+        <section>
+          <h4>Ответ от сервера</h4>
+          <pre><code data-line-numbers="">{
+  "name" : "Heimdall",
+  "cluster_name" : "elasticsearch",
+  "version" : {
+    "number" : "2.2.1",
+    "build_hash" : "d045fc29d1932bce18b2e65ab8b297fbf6cd41a1",
+    "build_timestamp" : "2016-03-09T09:38:54Z",
+    "build_snapshot" : false,
+    "lucene_version" : "5.4.1"
+  },
+  "tagline" : "You Know, for Search"
+}</code></pre>
+        </section>
+        <section>
+          <h3>Индексация</h3>
+          <pre><code data-line-numbers=""># Добавим документ c id 1 типа post в индекс blog.
+# ?pretty указывает, что вывод должен быть человеко-читаемым.
+
+curl -XPUT "$ES_URL/blog/post/1?pretty" -d'
+{
+  "title": "Веселые котята",
+  "content": "<p>Смешная история про котят<p>",
+  "tags": [
+    "котята",
+    "смешная история"
+  ],
+  "published_at": "2014-09-12T20:44:42+00:00"
+}'</code></pre>
+        </section>
+        <section>
+          <h3>Ответ от создания индекса</h3>
+          <pre><code data-line-numbers="">{
+  "_index" : "blog",
+  "_type" : "post",
+  "_id" : "1",
+  "_version" : 1,
+  "_shards" : {
+    "total" : 2,
+    "successful" : 1,
+    "failed" : 0
+  },
+  "created" : false
+}</code></pre>
+        </section>
+        <section>
+          <p>
+            ES автоматически создал индекс blog и тип post. Можно провести
+            условную аналогию: индекс — это база данных, а тип — таблица в этой
+            БД. Каждый тип имеет свою схему — mapping, также как и реляционная
+            таблица. Mapping генерируется автоматически при индексации
+            документа:
+          </p>
+        </section>
+        <section>
+          <pre><code># Получим mapping всех типов индекса blog
+curl -XGET "$ES_URL/blog/_mapping?pretty"</code></pre>
+        </section>
+        <section>
+          <pre><code data-line-numbers="">{
+  "blog" : {
+    "mappings" : {
+      "post" : {
+        "properties" : {
+          /* "content": "<p>Смешная история про котят<p>", */ 
+          "content" : {
+            "type" : "string"
+          },
+          /* "published_at": "2014-09-12T20:44:42+00:00" */
+          "published_at" : {
+            "type" : "date",
+            "format" : "strict_date_optional_time||epoch_millis"
+          },
+          /* "tags": ["котята", "смешная история"] */
+          "tags" : {
+            "type" : "string"
+          },
+          /*  "title": "Веселые котята" */
+          "title" : {
+            "type" : "string"
+          }
+        }
+      }
+    }
+  }
+}</code></pre>
+        </section>
+        <section>
+          <h4>Запросы</h4>
+          <pre><code># извлечем документ с id 1 типа post из индекса blog
+curl -XGET "$ES_URL/blog/post/1?pretty</code></pre>
+        </section>
+        <section>
+          <pre><code>{
+  "_index" : "blog",
+  "_type" : "post",
+  "_id" : "1",
+  "_version" : 1,
+  "found" : true,
+  "_source" : {
+    "title" : "Веселые котята",
+    "content" : "<p>Смешная история про котят<p>",
+    "tags" : [ "котята", "смешная история" ],
+    "published_at" : "2014-09-12T20:44:42+00:00"
+  }
+} </code></pre>
+          <p>
+            В ответе появились новые ключи: _version и _source. Вообще, все
+            ключи, начинающиеся с _ относятся к служебным.
+          </p>
+        </section>
+        <section>
+          <p>
+            Ключ _version показывает версию документа. Он нужен для работы
+            механизма оптимистических блокировок. Например, мы хотим изменить
+            документ, имеющий версию 1. Мы отправляем измененный документ и
+            указываем, что это правка документа с версией 1. Если кто-то другой
+            тоже редактировал документ с версией 1 и отправил изменения раньше
+            нас, то ES не примет наши изменения, т.к. он хранит документ с
+            версией 2.
+          </p>
+        </section>
+        <section>
+          <p>
+            Ключ _source содержит тот документ, который мы индексировали. ES не
+            использует это значение для поисковых операций, т.к. для поиска
+            используются индексы. Для экономии места ES хранит сжатый исходный
+            документ. Если нам нужен только id, а не весь исходный документ, то
+            можно отключить хранение исходника
+          </p>
+        </section>
+        <section>
+          <h4>Получение только _source</h4>
+          <pre><code>curl -XGET "$ES_URL/blog/post/1/_source?pretty"</code></pre>
+        </section>
+        <section>
+          <pre><code>{
+  "title" : "Веселые котята",
+  "content" : "<p>Смешная история про котят<p>",
+  "tags" : [ "котята", "смешная история" ],
+  "published_at" : "2014-09-12T20:44:42+00:00"
+}</code></pre>
+        </section>
+        <section>
+          <p>Также можно выбрать только определенное поле</p>
+          <pre><code>curl -XGET "$ES_URL/blog/post/1?_source=title&pretty"</code></pre>
+        </section>
+        <section>
+          <h4>Ответ поиска по полю</h4>
+          <pre><code>{
+  "_index" : "blog",
+  "_type" : "post",
+  "_id" : "1",
+  "_version" : 1,
+  "found" : true,
+  "_source" : {
+    "title" : "Веселые котята"
+  }
+}</code></pre>
+        </section>
+        <section>
+          <h4>
+            Проиндексируем еще несколько постов и выполним более сложные запросы
+          </h4>
+          <pre><code>curl -XPUT "$ES_URL/blog/post/2" -d'
+{
+  "title": "Веселые щенки",
+  "content": "<p>Смешная история про щенков</p>",
+  "tags": [
+    "щенки",
+    "смешная история"
+  ],
+  "published_at": "2014-08-12T20:44:42+00:00"
+}'</code></pre>
+        </section>
+        <section>
+          <pre><code>curl -XPUT "$ES_URL/blog/post/3" -d'
+{
+  "title": "Как у меня появился котенок",
+  "content": "<p>Душераздирающая история про бедного котенка с улицы</p>",
+  "tags": [
+    "котята"
+  ],
+  "published_at": "2014-07-21T20:44:42+00:00"
+}'</code></pre>
+        </section>
+        <section>
+          <h4>Сортировка</h4>
+          <pre><code>curl -XGET "$ES_URL/blog/post/_search?pretty" -d'
+{
+  "size": 1,
+  "_source": ["title", "published_at"],
+  "sort": [{"published_at": "desc"}]
+}'</code></pre>
+        </section>
+        <section>
+          <h4>Ответ сортировки</h4>
+          <pre><code>{
+  "took" : 8,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 5,
+    "successful" : 5,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : 3,
+    "max_score" : null,
+    "hits" : [ {
+      "_index" : "blog",
+      "_type" : "post",
+      "_id" : "1",
+      "_score" : null,
+      "_source" : {
+        "title" : "Веселые котята",
+        "published_at" : "2014-09-12T20:44:42+00:00"
+      },
+      "sort" : [ 1410554682000 ]
+    } ]
+  }
+}</code></pre>
+        </section>
+        <section>
+          <pre><code># получим посты, опубликованные 1ого сентября или позже
+curl -XGET "$ES_URL/blog/post/_search?pretty" -d'
+{
+  "filter": {
+    "range": {
+      "published_at": { "gte": "2014-09-01" }
+    }
+  }
+}'</code></pre>
+        </section>
+        <section>
+          <pre><code># найдем все документы, в поле tags которых есть элемент 'котята'
+curl -XGET "$ES_URL/blog/post/_search?pretty" -d'
+{
+  "_source": [
+    "title",
+    "tags"
+  ],
+  "filter": {
+    "term": {
+      "tags": "котята"
+    }
+  }
+}'</code></pre>
+        </section>
+        <section>
+          <h4>Ответ поиска по документу</h4>
+          <pre><code>{
+  "took" : 9,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 5,
+    "successful" : 5,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : 2,
+    "max_score" : 1.0,
+    "hits" : [ {
+      "_index" : "blog",
+      "_type" : "post",
+      "_id" : "1",
+      "_score" : 1.0,
+      "_source" : {
+        "title" : "Веселые котята",
+        "tags" : [ "котята", "смешная история" ]
+      }
+    }, {
+      "_index" : "blog",
+      "_type" : "post",
+      "_id" : "3",
+      "_score" : 1.0,
+      "_source" : {
+        "title" : "Как у меня появился котенок",
+        "tags" : [ "котята" ]
+      }
+    } ]
+  }
+}</code></pre>
+        </section>
+        <section>
+          <h4>Полнотекстовый поиск</h4>
+          <pre><code># source: false означает, что не нужно извлекать _source найденных документов
+curl -XGET "$ES_URL/blog/post/_search?pretty" -d'
+{
+  "_source": false,
+  "query": {
+    "match": {
+      "content": "история"
+    }
+  }
+}'</code></pre>
+        </section>
+        <section>
+          <h4>Результат полнотекстового поиска</h4>
+          <pre><code>{
+  "took" : 13,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 5,
+    "successful" : 5,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : 3,
+    "max_score" : 0.11506981,
+    "hits" : [ {
+      "_index" : "blog",
+      "_type" : "post",
+      "_id" : "2",
+      "_score" : 0.11506981
+    }, {
+      "_index" : "blog",
+      "_type" : "post",
+      "_id" : "1",
+      "_score" : 0.11506981
+    }, {
+      "_index" : "blog",
+      "_type" : "post",
+      "_id" : "3",
+      "_score" : 0.095891505
+    } ]
+  }
+}</code></pre>
+        </section>
+        <section>
+          <p>
+            Поле _score показывает релевантность. Если запрос выпоняется в
+            filter context, то значение _score всегда будет равно 1, что
+            означает полное соответствие фильтру.
+          </p>
+        </section>
+        <section>
+          <p>
+            Анализаторы нужны, чтобы преобразовать исходный текст в набор
+            токенов. Анализаторы состоят из одного Tokenizer и нескольких
+            необязательных TokenFilters. Tokenizer может предшествовать
+            нескольким CharFilters.
+          </p>
+          <p>
+            В ES есть несколько стандартных анализаторов. Например, анализатор
+            russian.
+          </p>
+        </section>
+        <section>
+          <h4>Воспользуемся api и посмотрим, как анализаторы standard и russian преобразуют строку "Веселые истории про котят"</h4>
+          <pre><code>curl -XGET "$ES_URL/_analyze?pretty&analyzer=standard&text=%D0%92%D0%B5%D1%81%D0%B5%D0%BB%D1%8B%D0%B5%20%D0%B8%D1%81%D1%82%D0%BE%D1%80%D0%B8%D0%B8%20%D0%BF%D1%80%D0%BE%20%D0%BA%D0%BE%D1%82%D1%8F%D1%82"</code></pre>
+        </section>
+        <section>
+          <pre><code>{
+  "tokens" : [ {
+    "token" : "веселые",
+    "start_offset" : 0,
+    "end_offset" : 7,
+    "type" : "<ALPHANUM>",
+    "position" : 0
+  }, {
+    "token" : "истории",
+    "start_offset" : 8,
+    "end_offset" : 15,
+    "type" : "<ALPHANUM>",
+    "position" : 1
+  }, {
+    "token" : "про",
+    "start_offset" : 16,
+    "end_offset" : 19,
+    "type" : "<ALPHANUM>",
+    "position" : 2
+  }, {
+    "token" : "котят",
+    "start_offset" : 20,
+    "end_offset" : 25,
+    "type" : "<ALPHANUM>",
+    "position" : 3
+  } ]
+}</code></pre>
+        </section>
+        <section>
+          <h4>russian analyzer</h4>
+          <pre><code>curl -XGET "$ES_URL/_analyze?pretty&analyzer=russian&text=%D0%92%D0%B5%D1%81%D0%B5%D0%BB%D1%8B%D0%B5%20%D0%B8%D1%81%D1%82%D0%BE%D1%80%D0%B8%D0%B8%20%D0%BF%D1%80%D0%BE%20%D0%BA%D0%BE%D1%82%D1%8F%D1%82"</code></pre>
+        </section>
+        <section>
+          <h4>Ответ от русского анализатора</h4>
+          <pre><code data-line-numbers="2-8|9-14|15-20"><script type="text/template">{
+  "tokens" : [ {
+    "token" : "весел",
+    "start_offset" : 0,
+    "end_offset" : 7,
+    "type" : "<ALPHANUM>",
+    "position" : 0
+  }, {
+    "token" : "истор",
+    "start_offset" : 8,
+    "end_offset" : 15,
+    "type" : "<ALPHANUM>",
+    "position" : 1
+  }, {
+    "token" : "кот",
+    "start_offset" : 20,
+    "end_offset" : 25,
+    "type" : "<ALPHANUM>",
+    "position" : 3
+  } ]
+}</script></code></pre>
+        </section>
+        <section>
+          <p>Стандартный анализатор разбил строку по пробелам и перевел все в нижний регистр, анализатор russian — убрал не значимые слова, перевел в нижний регистр и оставил основу слов.</p>
+        </section>
+        <section>
+          <h4>Посмотрим, какие Tokenizer, TokenFilters, CharFilters использует анализатор russian:</h4>
+          <pre><code data-line-numbers="2-15|16-28">{
+  "filter": {
+    "russian_stop": {
+      "type":       "stop",
+      "stopwords":  "_russian_"
+    },
+    "russian_keywords": {
+      "type":       "keyword_marker",
+      "keywords":   []
+    },
+    "russian_stemmer": {
+      "type":       "stemmer",
+      "language":   "russian"
+    }
+  },
+  "analyzer": {
+    "russian": {
+      "tokenizer":  "standard",
+      /* TokenFilters */
+      "filter": [
+        "lowercase",
+        "russian_stop",
+        "russian_keywords",
+        "russian_stemmer"
+      ]
+      /* CharFilters отсутствуют */
+    }
+  }
+}</code></pre>
+        </section>
+        <section>
+          <p>Опишем свой анализатор на основе russian, который будет вырезать html теги. Назовем его default, т.к. анализатор с таким именем будет использоваться по умолчанию</p>
+          <pre><code data-line-numbers="2-11|12-23">{
+  "filter": {
+    "ru_stop": {
+      "type":       "stop",
+      "stopwords":  "_russian_"
+    },
+    "ru_stemmer": {
+      "type":       "stemmer",
+      "language":   "russian"
+    }
+  },
+  "analyzer": {
+    "default": {
+      /* добавляем удаление html тегов */
+      "char_filter": ["html_strip"],
+      "tokenizer":  "standard",
+      "filter": [
+        "lowercase",
+        "ru_stop",
+        "ru_stemmer"
+      ]
+    }
+  }
+}</code></pre>
+        </section>
+        <section>
+          <p>Сначала из исходной строки удалятся все html теги, потом ее разобьет на токены tokenizer standard, полученные токены перейдут в нижний регистр, удалятся незначимые слова и от оставшихся токенов останется основа слова.</p>
+        </section>
+        <section>
+          <p>Создадим индекс blog2 с анализатором и маппингом, в котором отключен анализ поля tags:</p>
+          <pre><code data-line-numbers="3|4-14|15-27|30-47" data-line>curl -XPOST "$ES_URL/blog2" -d'
+{
+  "settings": {
+    "analysis": {
+      "filter": {
+        "ru_stop": {
+          "type": "stop",
+          "stopwords": "_russian_"
+        },
+        "ru_stemmer": {
+          "type": "stemmer",
+          "language": "russian"
+        }
+      },
+      "analyzer": {
+        "default": {
+          "char_filter": [
+            "html_strip"
+          ],
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "ru_stop",
+            "ru_stemmer"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "post": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "published_at": {
+          "type": "date"
+        },
+        "tags": {
+          "type": "string",
+          "index": "not_analyzed"
+        },
+        "title": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}'</code></pre>
+        </section>
+        <section>
+          <p>Полнотекстовый поиск с поддержкой выражений</p>
+          <pre><code># найдем документы, в которых встречается слово 'истории'
+# query -> simple_query_string -> query содержит поисковый запрос
+# поле title имеет приоритет 3
+# поле tags имеет приоритет 2
+# поле content имеет приоритет 1
+# приоритет используется при ранжировании результатов
+curl -XPOST "$ES_URL/blog2/post/_search?pretty" -d'
+{
+  "query": {
+    "simple_query_string": {
+      "query": "истории",
+      "fields": [
+        "title^3",
+        "tags^2",
+        "content"
+      ]
+    }
+  }
+}'</code></pre>
+        </section>
+        <section><pre><code># найдем документы без слова 'щенки'
+curl -XPOST "$ES_URL/blog2/post/_search?pretty" -d'
+{
+  "query": {
+    "simple_query_string": {
+      "query": "-щенки",
+      "fields": [
+        "title^3",
+        "tags^2",
+        "content"
+      ]
+    }
+  }
+}'
+
+# получим 2 поста про котиков</code></pre></section>
+      <section>
+        <p>Небольшой итог</p>
+        <p>Mysql — это надежное хранилище, источник исходных данных, ES — поисковый движок. У них разные задачи.
+          В большинстве случаев используют Mysql + ES. Бывают случаи, когда не очень важные данные хранят сразу в ES, например логи.
+          ES может забрать на себя нагрузку на чтение с Mysql, т.е. пишем в Mysql, а читаем из ES.
+          Надо смотреть на конкретные запросы и вполне возможно, что mysql при выборке по первичному ключу будет быстрее.
+          Но нужно понимать, что в ES есть значительно больше типов запросов, чем в mysql, например поиск по geo координатам, с помощью плагинов можно сделать поиск по изображениям.</p>
+      </section>
+      <section>
+        <p>Пример использования ES в laravel</p>
+      </section>
+      <section>
+        <h4>Миграция</h4>
+        <pre><code data-line-numbers="">Schema::create('articles', function (Blueprint $table) {
+            $table->bigIncrements('id');
+            $table->string('title');
+            $table->text('body');
+            $table->json('tags');
+            $table->timestamps();
+        });</code></pre>
+      </section>
+      <section>
+        <h4>Добавим cast для поля tags</h4>
+        <pre><code>namespace App;
+use Illuminate\Database\Eloquent\Model;
+class Article extends Model
+{
+    protected $casts = [
+        'tags' => 'json',
+    ];
+}</code></pre>
+      </section>
+      <section>
+        <h4>Создание сидера</h4>
+        <pre><code>use Illuminate\Database\Seeder;
+
+class ArticlesTableSeeder extends Seeder
+{
+    public function run()
+    {
+        DB::table('articles')->truncate();
+        factory(App\Article::class)->times(50)->create();
+    }
+}</code></pre></section>
+      <section>
+        <h4>Добавление сидера в главный seed class</h4>
+        <pre><code>public function run()
+{
+    $this->call(ArticlesTableSeeder::class);
+}</code></pre>
+      </section>
+      <section>
+        <h4>Создание factory</h4>
+        <pre><code>/* @var $factory \Illuminate\Database\Eloquent\Factory */
+use App\Article;
+use Faker\Generator as Faker;
+$factory->define(Article::class, function (Faker $faker) {
+    $tags = collect(['php', 'ruby', 'java', 'javascript', 'bash'])
+        ->random(2)
+        ->values()
+        ->all();
+    return [
+        'title' => $faker->sentence(),
+        'body' => $faker->text(),
+        'tags' => $tags,
+    ];
+});</code></pre>
+      </section>
+      <section>
+        <h4>Шаблон для вывода статей</h4>
+        <pre><code>@extends('layouts.app')
+
+@section('content')
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                Articles <small>({{ $articles->count() }})</small>
+            </div>
+            <div class="card-body">
+                @forelse ($articles as $article)
+                    <article class="mb-3">
+                        <h2>{{ $article->title }}</h2>
+
+                        <p class="m-0">{{ $article->body }}</body>
+
+                        <div>
+                            @foreach ($article->tags as $tag)
+                                <span class="badge badge-light">{{ $tag }}</span>
+                            @endforeach
+                        </div>
+                    </article>
+                @empty
+                    <p>No articles found</p>
+                @endforelse
+            </div>
+        </div>
+    </div>
+@stop</code></pre></section>
+      <section>
+        <h4>Как выглядит шаблон на данный момент</h4>
+        <img src="img/articles.png" alt="">
+      </section>
+      <section>
+        <h4>Создаём репозиторий для различного поиска</h4>
+        <pre><code>namespace App\Articles;
+use Illuminate\Database\Eloquent\Collection;
+
+interface ArticlesRepository
+{
+    public function search(string $query = ''): Collection;
+}</code></pre></section>
+      <section>
+        <h4>Репозиторий для работы с Eloquent</h4>
+        <pre><code data-line-numbers="">namespace App\Articles;
+
+use App\Article;
+use Illuminate\Database\Eloquent\Collection;
+
+class EloquentRepository implements ArticlesRepository
+{
+    public function search(string $query = ''): Collection
+    {
+        return Article::query()
+            ->where('body', 'like', "%{$query}%")
+            ->orWhere('title', 'like', "%{$query}%")
+            ->get();
+    }
+}</code></pre></section>
+      <section>
+        <pre><code data-line-numbers="6-20">namespace App\Providers;
+
+use App\Articles;
+use Illuminate\Support\ServiceProvider;
+
+class AppServiceProvider extends ServiceProvider
+{
+    /**
+     * Register any application services.
+     *
+     * @return void
+     */
+    public function register()
+    {
+        $this->app->bind(
+            Articles\ArticlesRepository::class,
+            Articles\EloquentRepository::class
+        );
+    }
+}</code></pre>
+      </section>
+      <section>
+        <h4>Добавим поле для поиска</h4>
+        <pre><code data-line-numbers="10-14">@extends('layouts.app')
+
+@section('content')
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                Articles <small>({{ $articles->count() }})</small>
+            </div>
+            <div class="card-body">
+                <form action="{{ url('search') }}" method="get">
+                    <div class="form-group">
+                        <input
+                            type="text"
+                            name="q"
+                            class="form-control"
+                            placeholder="Search..."
+                            value="{{ request('q') }}"
+                        />
+                    </div>
+                </form>
+                @forelse ($articles as $article)
+                    <article class="mb-3">
+                        <h2>{{ $article->title }}</h2>
+
+                        <p class="m-0">{{ $article->body }}</body>
+
+                        <div>
+                            @foreach ($article->tags as $tag)
+                                <span class="badge badge-light">{{ $tag}}</span>
+                            @endforeach
+                        </div>
+                    </article>
+                @empty
+                    <p>No articles found</p>
+                @endforelse
+            </div>
+        </div>
+    </div>
+@stop</code></pre>
+      </section>
+      <section>
+        <h4>Вывод макета с поиском</h4>
+        <img src="img/search.png" alt="">
+      </section>
+      <section>
+        <h4>Установливаем пакет для работы с elasticsearch</h4>
+        <pre><code>composer require elasticsearch/elasticsearch</code></pre>
+      </section>
+      <section><p>У нас есть обычная модель Eloquent, в нашем случае — Article. Мы можем написать трейт и наблюдателя, которые будут обрабатывать индексацию для всех наших моделей (тех, которые используют этот трейт), поэтому у нас будет что-то вроде</p></section>
+      <section>
+        <h4>Добавляем observer</h4>
+        <pre><code>namespace App\Search;
+
+use App\Article;
+use Elasticsearch\Client;
+
+class ElasticsearchObserver
+{
+    /** @var \Elasticsearch\Client */
+    private $elasticsearch;
+
+    public function __construct(Client $elasticsearch)
+    {
+        $this->elasticsearch = $elasticsearch;
+    }
+
+    public function saved($model)
+    {
+        $this->elasticsearch->index([
+            'index' => $model->getSearchIndex(),
+            'type' => $model->getSearchType(),
+            'id' => $model->getKey(),
+            'body' => $model->toSearchArray(),
+        ]);
+    }
+
+    public function deleted($model)
+    {
+        $this->elasticsearch->delete([
+            'index' => $model->getSearchIndex(),
+            'type' => $model->getSearchType(),
+            'id' => $model->getKey(),
+        ]);
+    }
+}</code></pre></section>
+    <section>
+      <h4>Создание трейта для поиска</h4><pre><code>trait Searchable
+{
+    public static function bootSearchable()
+    {
+        // Это облегчает переключение флага поиска.
+        // Будет полезно позже при развертывании 
+        // новой поисковой системы в продакшене
+        if (config('services.search.enabled')) {
+            static::observe(ElasticsearchObserver::class);
+        }
+    }
+
+    public function getSearchIndex()
+    {
+        return $this->getTable();
+    }
+
+    public function getSearchType()
+    {
+        if (property_exists($this, 'useSearchType')) {
+            return $this->useSearchType;
+        }
+
+        return $this->getTable();
+    }
+
+    public function toSearchArray()
+    {
+        // Наличие пользовательского метода
+        // преобразования модели в поисковый массив
+        // позволит нам настраивать данные
+        // которые будут доступны для поиска
+        // по каждой модели.
+        return $this->toArray();
+    }
+}</code></pre></section>
+    
+    <section>
+      <h4>Добавление трейта</h4>
+      <pre><code>namespace App;
+
+use App\Search\Searchable;
+use Illuminate\Database\Eloquent\Model;
+
+class Article extends Model
+{
+    use Searchable;
+    protected $casts = [
+        'tags' => 'json',
+    ];
+}</code></pre>
+    </section>
+    <section><p>Теперь, когда мы создаем, обновляем или удаляем сущность, используя нашу модель Eloquent Article, это запускает Elasticsearch Observer для обновления своих данных в Elasticsearch. Обратите внимание, что это происходит синхронно во время HTTP-запроса, лучше использовать очереди и обработчик Elasticsearch, который асинхронно индексирует данные, чтобы не замедлять пользовательский запрос.</p></section>
+    <section>
+      <h4>Создание репозитория для Elasticsearch</h4>
+      <pre><code>namespace App\Articles;
+
+use App\Article;
+use Elasticsearch\Client;
+use Illuminate\Support\Arr;
+use Illuminate\Database\Eloquent\Collection;
+
+class ElasticsearchRepository implements ArticlesRepository
+{
+    /** @var \Elasticsearch\Client */
+    private $elasticsearch;
+
+    public function __construct(Client $elasticsearch)
+    {
+        $this->elasticsearch = $elasticsearch;
+    }
+
+    public function search(string $query = ''): Collection
+    {
+        $items = $this->searchOnElasticsearch($query);
+
+        return $this->buildCollection($items);
+    }
+
+    private function searchOnElasticsearch(string $query = ''): array
+    {
+        $model = new Article;
+
+        $items = $this->elasticsearch->search([
+            'index' => $model->getSearchIndex(),
+            'type' => $model->getSearchType(),
+            'body' => [
+                'query' => [
+                    'multi_match' => [
+                        'fields' => ['title^5', 'body', 'tags'],
+                        'query' => $query,
+                    ],
+                ],
+            ],
+        ]);
+
+        return $items;
+    }
+
+    private function buildCollection(array $items): Collection
+    {
+        $ids = Arr::pluck($items['hits']['hits'], '_id');
+
+        return Article::findMany($ids)
+            ->sortBy(function ($article) use ($ids) {
+                return array_search($article->getKey(), $ids);
+            });
+    }
+}</code></pre></section>
+<section>
+  <h4>Регистрация репозиториев</h4>
+  <pre><code>namespace App\Providers;
+
+use App\Articles;
+use Illuminate\Support\ServiceProvider;
+
+class AppServiceProvider extends ServiceProvider
+{
+    /**
+     * Register any application services.
+     *
+     * @return void
+     */
+    public function register()
+    {
+        $this->app->bind(Articles\ArticlesRepository::class, function () {
+            // Это полезно, если мы хотим выключить наш кластер
+            // или при развертывании поиска на продакшене
+            if (! config('services.search.enabled')) {
+                return new Articles\EloquentRepository();
+            }
+
+            return new Articles\ElasticsearchRepository(
+                $app->make(Client::class)
+            );
+        });
+    }
+}</code></pre>
+</section>
+<section>
+  <p>Всякий раз, когда мы запрашиваем интерфейсный объект ArticlesRepository из контейнера IoC, он фактически выдает экземпляр ElasticsearchRepository, если тот включен, в противном случае — Eloquent версию.</p>
+</section>
+<section>
+  <h4>Регистрация клиента для elasticsearch</h4>
+  <pre><code>namespace App\Providers;
+
+use App\Articles;
+use Elasticsearch\Client;
+use Elasticsearch\ClientBuilder;
+use Illuminate\Support\ServiceProvider;
+
+class AppServiceProvider extends ServiceProvider
+{
+    /**
+     * Register any application services.
+     *
+     * @return void
+     */
+    public function register()
+    {
+        $this->app->bind(Articles\ArticlesRepository::class, function () {
+            // Это полезно, если мы хотим выключить наш кластер
+            // или при развертывании поиска на продакшене
+            if (! config('services.search.enabled')) {
+                return new Articles\EloquentRepository();
+            }
+
+            return new Articles\ElasticsearchRepository(
+                $app->make(Client::class)
+            );
+        });
+
+        $this->bindSearchClient();
+    }
+
+    private function bindSearchClient()
+    {
+        $this->app->bind(Client::class, function ($app) {
+            return ClientBuilder::create()
+                ->setHosts($app['config']->get('services.search.hosts'))
+                ->build();
+        });
+    }
+}</code></pre>
+</section>
+<section>
+  <h4>Добавление данных в конфиг</h4>
+  <pre><code>return [
+    // ...
+    'search' => [
+        'enabled' => env('ELASTICSEARCH_ENABLED', false),
+        'hosts' => explode(',', env('ELASTICSEARCH_HOSTS')),
+    ],
+];</code></pre>
+</section>
+<section>
+  <h4>Добавление данных в env файл</h4>
+  <pre><code>ELASTICSEARCH_ENABLED=true
+ELASTICSEARCH_HOSTS="localhost:9200"</code></pre>
+</section>
+<section>
+  <p>Теперь нужно заполнить Elasticsearch нашими данными. Для этого нам понадобится специальная artisan команда. Создайте её через php artisan make:command ReindexCommand</p>
+</section>
+<section>
+  <h4>Создание команды для заполнения данных Elasticsearch</h4>
+  <pre><code>php artisan make:command ReindexCommand --command="search:reindex"</code></pre>
+</section>
+<section><pre><code>namespace App\Console\Commands;
+
+use App\Article;
+use Elasticsearch\Client;
+use Illuminate\Console\Command;
+
+class ReindexCommand extends Command
+{
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
+    protected $signature = 'search:reindex';
+
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = 'Индекс всех статей в Elasticsearch';
+
+    /** @var \Elasticsearch\Client */
+    private $elasticsearch;
+
+    /**
+     * Create a new command instance.
+     *
+     * @return void
+     */
+    public function __construct(Client $elasticsearch)
+    {
+        parent::__construct();
+
+        $this->elasticsearch = $elasticsearch;
+    }
+
+    /**
+     * Execute the console command.
+     *
+     * @return mixed
+     */
+    public function handle()
+    {
+        $this->info('Индексация всех статей. Ожидайте...');
+
+        foreach (Article::cursor() as $article)
+        {
+            $this->elasticsearch->index([
+                'index' => $article->getSearchIndex(),
+                'type' => $article->getSearchType(),
+                'id' => $article->getKey(),
+                'body' => $article->toSearchArray(),
+            ]);
+
+            $this->output->write('.');
+        }
+
+        $this->info('\Выполнено!');
+    }
+}</code></pre></section>
+<section><pre><code>php artisan search:reindex
+  Индексация всех статей. Ожидайте...
+..................................................
+Выполнено!</code></pre></section>
+<section>
+  <h4>Запуск сервера</h4>
+  <img src="img/elaticsearch.png" alt="">
+</section>
+<section>
+  <p>Мы могли бы достичь аналогичного результата и через простой SQL. Но в Elasticsearch есть и другие вкусняшки. Например, допустим, что вас больше интересует поиск по заголовку, чем по любому другому полю, плюс важен поиск по тегам</p>
+  <img src="img/tags.png" alt="">
+</section>
+<section>
+  <p>Для этого нужно определить правило реливантности в ElasticsearchRepository</p>
+  <pre><code>'query' => [
+    'multi_match' => [
+        'fields' => ['title^5', 'body', 'tags'],
+        'query' => $query,
+    ],
+],</code></pre>
+</section>
+<section>
+  <p>Вывод результат с учетом релевантности</p>
+  <img src="img/title.png" alt="">
+</section>
+  </div>
+    </div>
+
+    <script src="dist/reveal.js"></script>
+    <script src="plugin/notes/notes.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script src="plugin/highlight/highlight.js"></script>
+    <script
+      src="https://code.jquery.com/jquery-3.7.1.min.js"
+      integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      // More info about initialization & config:
+      // - https://revealjs.com/initialization/
+      // - https://revealjs.com/config/
+      Reveal.initialize({
+        hash: true,
+        // Learn about plugins: https://revealjs.com/plugins/
+        plugins: [RevealMarkdown, RevealHighlight, RevealNotes],
+      });
+
+      // $("pre code").each(function(){
+      //     var html = $(this).html();
+      //     var pattern = html.match(/\s*\n[\t\s]*/);
+      //     $(this).html(html.replace(new RegExp(pattern, "g"),'\n'));
+      // });
+    </script>
+  </body>
+</html>
